@@ -2,11 +2,30 @@ import { AppError } from "@/lib/errors";
 import type { ChatTurn } from "@/lib/types";
 import { apiResponse, readBody } from "@/lib/server/http";
 import { answerQuestion } from "@/lib/server/rag";
+import { attachSessionCookie, requestOwner } from "@/lib/server/owner";
+import { getMeeting, listChat, saveChat, touchSession } from "@/lib/server/database";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+export async function GET(request: Request) {
+  let setCookie: string | undefined;
+  const response = await apiResponse(request, async () => {
+    const context = await requestOwner(request);
+    setCookie = context.setCookie;
+    const meetingId = new URL(request.url).searchParams.get("meetingId") || "";
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(meetingId))
+      throw new AppError("INVALID_INPUT", "Select a valid meeting.");
+    await touchSession(context.owner);
+    await getMeeting(meetingId, context.owner);
+    return Response.json({ messages: await listChat(meetingId, context.owner) });
+  });
+  return attachSessionCookie(response, setCookie);
+}
 export async function POST(request: Request) {
-  return apiResponse(request, async (metrics) => {
+  let setCookie: string | undefined;
+  const response = await apiResponse(request, async (metrics) => {
+    const context = await requestOwner(request);
+    setCookie = context.setCookie;
     if (!request.headers.get("content-type")?.startsWith("application/json"))
       throw new AppError("INVALID_INPUT", "Send a JSON question.");
     const bytes = await readBody(request, 20000);
@@ -53,13 +72,15 @@ export async function POST(request: Request) {
         "INVALID_INPUT",
         "Conversation history is invalid or too long.",
       );
-    return Response.json(
-      await answerQuestion(
+    const answer = await answerQuestion(
         body.meetingId,
         body.question.trim(),
         history,
         metrics,
-      ),
-    );
+        context.owner,
+      );
+    await saveChat(body.meetingId, context.owner, body.question.trim(), answer);
+    return Response.json(answer);
   });
+  return attachSessionCookie(response, setCookie);
 }

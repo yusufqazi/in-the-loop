@@ -17,12 +17,24 @@ export function databaseConfig() {
     key: required("SUPABASE_SERVICE_ROLE_KEY"),
   };
 }
+export function supabasePublicConfig() {
+  return {
+    url: required("SUPABASE_URL"),
+    anonKey: required("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+  };
+}
 export function modelConfig() {
   return {
     apiKey: required("OPENAI_API_KEY"),
     embeddingModel:
       process.env.OPENAI_EMBEDDING_MODEL?.trim() || "text-embedding-3-small",
     answerModel: process.env.OPENAI_ANSWER_MODEL?.trim() || "gpt-6-luna",
+  };
+}
+export function transcriptionConfig() {
+  return {
+    apiKey: required("OPENAI_API_KEY"),
+    model: process.env.OPENAI_TRANSCRIPTION_MODEL?.trim() || "gpt-4o-transcribe-diarize",
   };
 }
 export function assertDemoAccess(request: Request) {

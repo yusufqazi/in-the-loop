@@ -3,16 +3,25 @@ import { MAX_FILE_BYTES } from "@/lib/transcript";
 import { listMeetings } from "@/lib/server/database";
 import { apiResponse, readBody } from "@/lib/server/http";
 import { ingestTranscript } from "@/lib/server/rag";
+import { attachSessionCookie, requestOwner } from "@/lib/server/owner";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 export async function GET(request: Request) {
-  return apiResponse(request, async () =>
-    Response.json({ meetings: await listMeetings() }),
-  );
+  let setCookie: string | undefined;
+  const response = await apiResponse(request, async () => {
+    const context = await requestOwner(request);
+    setCookie = context.setCookie;
+    const meetings = await listMeetings(context.owner);
+    return Response.json({ meetings });
+  });
+  return attachSessionCookie(response, setCookie);
 }
 export async function POST(request: Request) {
-  return apiResponse(request, async (metrics) => {
+  let setCookie: string | undefined;
+  const response = await apiResponse(request, async (metrics) => {
+    const context = await requestOwner(request);
+    setCookie = context.setCookie;
     const type = request.headers.get("content-type") || "";
     if (!type.startsWith("multipart/form-data"))
       throw new AppError(
@@ -52,7 +61,8 @@ export async function POST(request: Request) {
         "Save the transcript as UTF-8 text before uploading.",
       );
     }
-    const meeting = await ingestTranscript(text, file.name, metrics);
+    const meeting = await ingestTranscript(text, file.name, metrics, context.owner);
     return Response.json({ meeting }, { status: 201 });
   });
+  return attachSessionCookie(response, setCookie);
 }

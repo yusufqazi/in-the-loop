@@ -246,6 +246,25 @@ button svg {
 .meeting-button.selected .meeting-glyph {
   color: var(--green);
 }
+.meeting-row { display: flex; border-bottom: 1px solid var(--border); }
+.meeting-row.selected { background: var(--green-light); }
+.meeting-row .meeting-button { flex: 1; min-width: 0; border-bottom: 0; }
+.meeting-delete { align-self: flex-start; flex-shrink: 0; width: 30px; height: 34px; margin: 10px 2px 0 0; padding: 7px; border: 0; background: transparent; color: var(--muted); }
+.meeting-delete svg { width: 16px; height: 16px; }
+.meeting-delete:hover:not(:disabled) { color: #8b3515; background: #f3e6dc; }
+.transcript-dialog { width: min(900px, calc(100vw - 32px)); height: min(760px, calc(100dvh - 48px)); max-width: none; max-height: none; margin: auto; padding: 0; border: 1px solid var(--border); border-radius: 2px; background: var(--paper); color: var(--ink); overflow: hidden; }
+.transcript-dialog[open] { display: flex; flex-direction: column; }
+.transcript-dialog::backdrop { background: #181b1759; }
+.transcript-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.transcript-dialog-header > div { min-width: 0; }
+.transcript-dialog-header p { margin: 0; }
+.transcript-dialog-header h2 { margin: 5px 0 0; font-family: var(--font-display), sans-serif; font-size: 28px; line-height: 1.15; overflow-wrap: anywhere; }
+.transcript-dialog-header button { flex-shrink: 0; }
+.transcript-dialog-body { flex: 1; min-height: 0; padding: 20px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #111 transparent; }
+.transcript-dialog-body pre { margin: 0; font-family: var(--mono); font-size: 12px; line-height: 1.85; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sample-row { display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border); }
+.sample-row .sample-card { flex: 1; min-width: 0; border-bottom: 0; }
+.sample-preview { flex-shrink: 0; margin-right: 12px; }
 .sidebar-placeholder {
   padding: 10px 5px;
   font-size: 12px;
@@ -287,6 +306,55 @@ button svg {
 .workspace-header > div {
   min-width: 0;
 }
+.account-control {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.account-button {
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid var(--green);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--green);
+  font-size: 11px;
+}
+.account-button:hover { background: var(--green-light); }
+.sign-in-panel {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 12px);
+  right: 0;
+  display: grid;
+  width: min(320px, calc(100vw - 36px));
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  background: var(--paper);
+  box-shadow: 0 8px 24px #181b171c;
+}
+.sign-in-panel label { font-size: 12px; font-weight: 600; }
+.sign-in-panel input { min-height: 38px; padding: 8px; border: 1px solid var(--border); background: white; }
+.sign-in-panel p { margin: 0; font-size: 12px; line-height: 1.6; }
+.auth-mode { display: flex; gap: 6px; margin-bottom: 4px; border-bottom: 1px solid var(--border); }
+.auth-mode button { padding: 7px 8px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 11px; }
+.auth-mode button[aria-pressed="true"] { border-bottom-color: var(--green); color: var(--ink); }
+.auth-confirm { padding: 64px 24px; font-size: 14px; }
+.auth-confirm a { display: inline-block; margin-top: 12px; }
+.auth-text-button { border: 0; padding: 3px 0; background: transparent; color: var(--green); font-size: 12px; text-align: left; text-decoration: underline; text-underline-offset: 3px; }
+.auth-card { max-width: 420px; margin: 0 auto; }
+.auth-card h1 { margin: 12px 0 24px; font-family: var(--font-display), sans-serif; font-size: 36px; line-height: 1.1; }
+.auth-card > a { display: block; width: fit-content; color: var(--green); }
+.password-form { display: grid; gap: 10px; }
+.password-form label { font-weight: 600; }
+.password-form input { min-width: 0; min-height: 42px; padding: 10px; border: 1px solid var(--border); background: var(--paper); }
+.password-form small { margin-bottom: 10px; color: var(--muted); }
+.auth-error { padding: 12px; border: 1px solid #d6aa97; background: #fff1ea; color: #8b3515; }
 .eyebrow {
   font-family: var(--mono);
   font-size: 10px;
@@ -484,6 +552,81 @@ button svg {
 .paste-form .primary-button {
   justify-self: start;
   margin-top: 3px;
+}
+.audio-input {
+  display: grid;
+  gap: 14px;
+  margin-top: 20px;
+  min-width: 0;
+}
+.audio-input label {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.audio-input input,
+.audio-input audio {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+.audio-input input {
+  font-size: 12px;
+}
+.audio-input input::file-selector-button {
+  margin-right: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+}
+.audio-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.audio-controls .text-button {
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+}
+.audio-status {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.audio-input p.audio-error {
+  color: #9b351b;
+  margin: 0;
+}
+.speaker-editor {
+  margin: 6px 0;
+  padding: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  min-width: 0;
+}
+.speaker-editor legend {
+  padding-right: 8px;
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+.speaker-name-row {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 280px);
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 8px;
+}
+.speaker-name-row .speaker-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #9b351b;
 }
 .format-help {
   margin-top: 16px;
@@ -930,6 +1073,12 @@ button svg {
     border-bottom: 0;
     border-right: 1px solid var(--border);
   }
+  .meeting-row { flex: 0 0 248px; border-bottom: 0; border-right: 1px solid var(--border); }
+  .meeting-row .meeting-button { width: auto; border-right: 0; }
+  .account-control { flex-direction: column; align-items: flex-end; gap: 8px; }
+  .sample-row { flex-wrap: wrap; gap: 0; }
+  .sample-row .sample-card { flex-basis: 100%; }
+  .sample-preview { margin: 0 0 12px 34px; }
   .meeting-button strong {
     font-size: 12px;
   }
@@ -964,6 +1113,7 @@ button svg {
   .workspace-header {
     padding-top: 22px;
     padding-bottom: 21px;
+    align-items: flex-start;
   }
   .workspace-header h1 {
     font-size: 30px;
@@ -975,6 +1125,7 @@ button svg {
   .workspace-header p span {
     padding: 0 6px;
   }
+  .account-control > span { display: none; }
   .conversation-scroll {
     padding-top: 30px;
     padding-bottom: 28px;

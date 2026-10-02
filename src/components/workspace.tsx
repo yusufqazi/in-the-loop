@@ -1,8 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import type { Answer, ChatTurn, Meeting } from "@/lib/types";
+import type { Answer, ChatTurn, Meeting, MeetingTranscript } from "@/lib/types";
 import Sources from "./sources";
+import TranscriptViewer from "./transcript-viewer";
+import AudioInput from "./audio-input";
+import SpeakerEditor from "./speaker-editor";
+import { validateAudioFile } from "@/lib/audio";
+import { renameTranscriptSpeaker, type AudioTranscript, type DetectedSpeaker } from "@/lib/audio-transcript";
+import { supabaseBrowser } from "@/lib/supabase-browser";
+import { authLinkDestination, isExistingAccount } from "@/lib/auth-links";
 
 type Message = {
   id: string;
@@ -11,6 +18,9 @@ type Message = {
   answer?: Answer;
 };
 type Problem = { message: string; requestId?: string };
+type TranscriptTarget = { title: string } & (
+  { kind: "meeting"; id: string } | { kind: "sample"; name: string }
+);
 const questions = [
   "What were the main decisions?",
   "What action items were assigned?",
@@ -19,7 +29,19 @@ const questions = [
 ];
 
 async function api<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(url, { ...options, cache: "no-store" });
+  const headers = new Headers(options?.headers);
+  if (
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  ) {
+    const session = await supabaseBrowser().auth.getSession();
+    if (session.data.session?.access_token)
+      headers.set(
+        "Authorization",
+        `Bearer ${session.data.session.access_token}`,
+      );
+  }
+  const response = await fetch(url, { ...options, headers, cache: "no-store" });
   let body;
   try {
     body = await response.json();
@@ -78,20 +100,42 @@ export default function Workspace() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [asking, setAsking] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [transcriptTarget, setTranscriptTarget] = useState<TranscriptTarget | null>(null);
+  const [transcriptContent, setTranscriptContent] = useState({ text: "", loading: true, error: "" });
   const [showUpload, setShowUpload] = useState(false);
-  const [inputMode, setInputMode] = useState<"file" | "paste">("file");
+  const [inputMode, setInputMode] = useState<"file" | "paste" | "audio">("file");
+  const [audioRecording, setAudioRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const [pastedText, setPastedText] = useState("");
+  const [detectedSpeakers, setDetectedSpeakers] = useState<DetectedSpeaker[]>([]);
   const [pasteTitle, setPasteTitle] = useState("");
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<Problem | null>(null);
   const [notice, setNotice] = useState("");
   const [chats, setChats] = useState<Record<string, Message[]>>({});
+  const [accountEmail, setAccountEmail] = useState<string | null>(null);
+  const [accountReady, setAccountReady] = useState(
+    !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+      !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  );
+  const [showSignIn, setShowSignIn] = useState(false);
+  const [authMode, setAuthMode] = useState<"sign-in" | "sign-up" | "reset">("sign-in");
+  const [signInEmail, setSignInEmail] = useState("");
+  const [signInPassword, setSignInPassword] = useState("");
+  const [signInSent, setSignInSent] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [signingIn, setSigningIn] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const busyRef = useRef(false);
   const selected = meetings.find((m) => m.id === selectedId);
   const messages = selectedId ? chats[selectedId] || [] : [];
-  const busy = uploading || asking;
+  const chatsRef = useRef(chats);
+  const busy = uploading || asking || deletingId !== null || audioRecording || transcribing;
+  useEffect(() => {
+    chatsRef.current = chats;
+  }, [chats]);
 
   async function loadMeetings(signal?: AbortSignal) {
     try {
@@ -113,6 +157,20 @@ export default function Workspace() {
     }
   }
   useEffect(() => {
+    function redirectEmailLink() {
+      const destination = authLinkDestination(window.location.href);
+      if (!destination) return false;
+      window.location.replace(`${destination}${window.location.search}${window.location.hash}`);
+      return true;
+    }
+    if (redirectEmailLink()) return;
+    window.addEventListener("hashchange", redirectEmailLink);
+    if (new URLSearchParams(window.location.search).get("auth") === "reset") {
+      queueMicrotask(() => {
+        setAuthMode("reset");
+        setShowSignIn(true);
+      });
+    }
     const controller = new AbortController();
     api<{ meetings: Meeting[] }>("/api/meetings", { signal: controller.signal })
       .then((data) => {
@@ -127,15 +185,169 @@ export default function Workspace() {
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
       });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      window.removeEventListener("hashchange", redirectEmailLink);
+    };
   }, []);
+  useEffect(() => {
+    if (
+      !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+      !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    ) {
+      return;
+    }
+    const supabase = supabaseBrowser();
+    let active = true;
+    const subscription = supabase.auth.onAuthStateChange((event, session) => {
+      if (!active) return;
+      if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session) {
+        setAccountEmail(session.user.email || null);
+        setAccountReady(false);
+        queueMicrotask(async () => {
+          try {
+            await api("/api/account/claim", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                chats: Object.fromEntries(
+                  Object.entries(chatsRef.current).map(([id, messages]) => [
+                    id,
+                    messages.map(({ role, text, answer }) => ({
+                      role,
+                      content: text,
+                      answer: answer || null,
+                    })),
+                  ]),
+                ),
+              }),
+            });
+            const data = await api<{ meetings: Meeting[] }>("/api/meetings");
+            setMeetings(data.meetings);
+            setSelectedId((id) =>
+              data.meetings.some((meeting) => meeting.id === id)
+                ? id
+                : data.meetings[0]?.id || null,
+            );
+            setAccountEmail(session.user.email || null);
+            setAccountReady(true);
+            setShowSignIn(false);
+            setSignInSent(false);
+            setSignInPassword("");
+            setNotice("Your workspace is saved to your account.");
+          } catch (e) {
+            setError(problem(e));
+            setAccountReady(true);
+          }
+        });
+      } else if (event === "SIGNED_OUT") {
+        setAccountEmail(null);
+        setAccountReady(false);
+        setChats({});
+        setTranscriptTarget(null);
+        setTranscriptContent({ text: "", loading: true, error: "" });
+        void loadMeetings();
+      } else if (event === "INITIAL_SESSION") {
+        setAccountReady(true);
+      }
+    });
+    void supabase.auth.getSession().then(({ data }) => {
+      if (active) setAccountEmail(data.session?.user.email || null);
+    });
+    return () => {
+      active = false;
+      subscription.data.subscription.unsubscribe();
+    };
+  }, []);
+  useEffect(() => {
+    if (!accountEmail || !accountReady || !selectedId) return;
+    let active = true;
+    void api<{
+      messages: {
+        id: string;
+        role: "user" | "assistant";
+        content: string;
+        answer: Answer | null;
+      }[];
+    }>(`/api/chat?meetingId=${selectedId}`)
+      .then(({ messages }) => {
+        if (active)
+          setChats((current) => ({
+            ...current,
+            [selectedId]: messages.map((message) => ({
+              id: message.id,
+              role: message.role,
+              text: message.content,
+              answer: message.answer || undefined,
+            })),
+          }));
+      })
+      .catch((e) => {
+        if (active) setError(problem(e));
+      });
+    return () => { active = false; };
+  }, [accountEmail, accountReady, selectedId]);
   useEffect(() => {
     if (messages.length || asking)
       bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages.length, asking]);
 
+  useEffect(() => {
+    if (!transcriptTarget) return;
+    const controller = new AbortController();
+    async function loadTranscript(target: TranscriptTarget) {
+      try {
+        let text: string;
+        if (target.kind === "meeting") {
+          const { transcript } = await api<{ transcript: MeetingTranscript }>(`/api/meetings/${target.id}`, { signal: controller.signal });
+          text = transcript.raw_transcript;
+        } else {
+          const response = await fetch(`/samples/${target.name}.txt`, { signal: controller.signal });
+          if (!response.ok) throw new Error("The sample transcript could not be loaded.");
+          text = await response.text();
+        }
+        if (!controller.signal.aborted) setTranscriptContent({ text, loading: false, error: "" });
+      } catch (e) {
+        if (!controller.signal.aborted) setTranscriptContent({ text: "", loading: false, error: problem(e).message });
+      }
+    }
+    void loadTranscript(transcriptTarget);
+    return () => controller.abort();
+  }, [transcriptTarget]);
+
+  function viewTranscript(target: TranscriptTarget) {
+    setTranscriptContent({ text: "", loading: true, error: "" });
+    setTranscriptTarget(target);
+  }
+
+  async function removeMeeting(meeting: Meeting) {
+    if (busyRef.current || audioRecording || !window.confirm(`Delete “${meeting.title}” and its chat? This cannot be undone.`)) return;
+    busyRef.current = true;
+    setDeletingId(meeting.id);
+    setError(null);
+    setNotice("");
+    try {
+      await api(`/api/meetings/${meeting.id}`, { method: "DELETE" });
+      const remaining = meetings.filter((item) => item.id !== meeting.id);
+      setMeetings(remaining);
+      setSelectedId((id) => id === meeting.id ? remaining[0]?.id || null : id);
+      setChats((current) => {
+        const next = { ...current };
+        delete next[meeting.id];
+        return next;
+      });
+      if (selectedId === meeting.id) setDraft("");
+      setNotice(`“${meeting.title}” deleted.`);
+    } catch (e) {
+      setError(problem(e));
+    } finally {
+      setDeletingId(null);
+      busyRef.current = false;
+    }
+  }
+
   async function upload(file: File) {
-    if (busyRef.current) return;
+    if (busyRef.current || audioRecording) return;
     if (!/\.txt$/i.test(file.name) || !file.size || file.size > 100 * 1024) {
       setError({
         message: "Choose a nonempty .txt file no larger than 100 KiB.",
@@ -158,6 +370,7 @@ export default function Workspace() {
       setDraft("");
       setShowUpload(false);
       setPastedText("");
+      setDetectedSpeakers([]);
       setPasteTitle("");
       setNotice(`“${meeting.title}” added.`);
     } catch (e) {
@@ -168,8 +381,38 @@ export default function Workspace() {
       if (fileInput.current) fileInput.current.value = "";
     }
   }
+
+  async function transcribe(file: File) {
+    if (busyRef.current || audioRecording) return;
+    validateAudioFile(file);
+    busyRef.current = true;
+    setTranscribing(true);
+    setError(null);
+    setNotice("");
+    try {
+      const form = new FormData();
+      form.set("file", file);
+      const { text, speakers } = await api<AudioTranscript>("/api/transcribe", {
+        method: "POST",
+        body: form,
+      });
+      setPastedText(text);
+      setDetectedSpeakers(speakers);
+      setPasteTitle(file.name.replace(/\.[^.]+$/, "").slice(0, 120));
+      setInputMode("paste");
+      setNotice("Transcript ready. Review and edit it, then add the meeting.");
+    } finally {
+      setTranscribing(false);
+      busyRef.current = false;
+    }
+  }
+  function renameSpeaker(id: string, name: string) {
+    const updated = renameTranscriptSpeaker(pastedText, detectedSpeakers, id, name);
+    setPastedText(updated.text);
+    setDetectedSpeakers(updated.speakers);
+  }
   async function importSample(name: string) {
-    if (busyRef.current) return;
+    if (busyRef.current || audioRecording) return;
     try {
       const response = await fetch(`/samples/${name}.txt`);
       if (!response.ok)
@@ -184,7 +427,7 @@ export default function Workspace() {
     }
   }
   async function ask(question: string) {
-    if (!selected || busyRef.current || !question.trim()) return;
+    if (!selected || busyRef.current || audioRecording || !question.trim()) return;
     const meetingId = selected.id;
     const previous = chats[meetingId] || [];
     const userMessage: Message = {
@@ -238,6 +481,48 @@ export default function Workspace() {
     event.preventDefault();
     void ask(draft);
   }
+  async function requestSignIn(event: FormEvent) {
+    event.preventDefault();
+    setSigningIn(true);
+    setError(null);
+    setAuthError("");
+    try {
+      const auth = supabaseBrowser().auth;
+      if (authMode === "reset") {
+        const { error } = await auth.resetPasswordForEmail(signInEmail.trim(), {
+          redirectTo: `${window.location.origin}/auth/reset-password`,
+        });
+        if (error) throw error;
+        setSignInSent(true);
+        setSignInPassword("");
+        return;
+      }
+      const credentials = {
+        email: signInEmail.trim(),
+        password: signInPassword,
+      };
+      const result = authMode === "sign-up"
+        ? await auth.signUp({
+            ...credentials,
+            options: { emailRedirectTo: `${window.location.origin}/auth/confirm` },
+          })
+        : await auth.signInWithPassword(credentials);
+      if (authMode === "sign-up" && isExistingAccount(result)) {
+        setAuthMode("sign-in");
+        setSignInPassword("");
+        throw new Error("An account with this email already exists. Please sign in.");
+      }
+      const { error } = result;
+      if (error) throw error;
+      if (authMode === "sign-up" && !result.data.session) {
+        setSignInSent(true);
+        setSignInPassword("");
+      } else {
+        setShowSignIn(false);
+      }
+    } catch (e) { setAuthError(problem(e).message); }
+    finally { setSigningIn(false); }
+  }
 
   return (
     <div className="workspace">
@@ -251,10 +536,10 @@ export default function Workspace() {
             <strong>In The Loop</strong>
           </div>
         </div>
-        <button
-          className="primary-button upload-button"
+          <button
+            className="primary-button upload-button"
           onClick={() => setShowUpload((value) => !value)}
-          disabled={busy}
+          disabled={busy || loading}
           aria-expanded={showUpload}
         >
           Upload transcript
@@ -273,8 +558,8 @@ export default function Workspace() {
             </p>
           ) : meetings.length ? (
             meetings.map((meeting, index) => (
+              <div key={meeting.id} className={`meeting-row ${meeting.id === selectedId ? "selected" : ""}`}>
               <button
-                key={meeting.id}
                 className={`meeting-button ${meeting.id === selectedId ? "selected" : ""}`}
                 aria-pressed={meeting.id === selectedId}
                 disabled={busy}
@@ -297,6 +582,10 @@ export default function Workspace() {
                   </small>
                 </span>
               </button>
+              <button type="button" className="meeting-delete" disabled={busy} onClick={() => void removeMeeting(meeting)} aria-label={`Delete ${meeting.title}`} title="Delete meeting">
+                <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 5h14M7 5V3h6v2M5 5l1 12h8l1-12M8 8v6m4-6v6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </button>
+              </div>
             ))
           ) : (
             <p className="sidebar-placeholder">
@@ -334,6 +623,48 @@ export default function Workspace() {
               </p>
             ) : null}
           </div>
+          <div className="account-control">
+            {selected ? <button className="account-button" type="button" disabled={busy} onClick={() => viewTranscript({ kind: "meeting", id: selected.id, title: selected.title })}>View transcript</button> : null}
+            {accountEmail ? (
+              <>
+                <span>{accountEmail}</span>
+                <button className="account-button" disabled={busy} onClick={() => void supabaseBrowser().auth.signOut()}>Sign out</button>
+              </>
+            ) : (
+              <button className="account-button" disabled={busy} onClick={() => { setShowSignIn((value) => !value); setSignInSent(false); setAuthError(""); }}>
+                Sign in to save
+              </button>
+            )}
+            {showSignIn && !accountEmail ? (
+              <form className="sign-in-panel" onSubmit={requestSignIn}>
+                {authError ? <p className="auth-error" role="alert">{authError}</p> : null}
+                {signInSent ? (
+                  <>
+                    <p role="status">{authMode === "reset"
+                      ? "If an account exists for this email, you will receive a password reset link. Check your inbox and spam folder."
+                      : "Check your email to verify your address. Open the verification link in this browser to save this session."}</p>
+                    <button className="auth-text-button" type="button" onClick={() => { setSignInSent(false); setAuthMode("sign-in"); setAuthError(""); }}>Back to sign in</button>
+                  </>
+                ) : (
+                  <>
+                    <div className="auth-mode" aria-label="Account action">
+                      <button type="button" disabled={signingIn} aria-pressed={authMode === "sign-in"} onClick={() => { setAuthMode("sign-in"); setSignInPassword(""); setAuthError(""); }}>Sign in</button>
+                      <button type="button" disabled={signingIn} aria-pressed={authMode === "sign-up"} onClick={() => { setAuthMode("sign-up"); setSignInPassword(""); setAuthError(""); }}>Create account</button>
+                    </div>
+                    {authMode === "reset" ? <p>Enter your email to reset your password.</p> : null}
+                    <label htmlFor="sign-in-email">Email</label>
+                    <input id="sign-in-email" type="email" autoComplete="email" required disabled={signingIn} value={signInEmail} onChange={(event) => setSignInEmail(event.target.value)} placeholder="you@example.com" />
+                    {authMode !== "reset" ? <>
+                    <label htmlFor="sign-in-password">Password</label>
+                    <input id="sign-in-password" type="password" autoComplete={authMode === "sign-in" ? "current-password" : "new-password"} minLength={authMode === "sign-up" ? 8 : 1} required disabled={signingIn} value={signInPassword} onChange={(event) => setSignInPassword(event.target.value)} />
+                    </> : null}
+                    <button className="primary-button" type="submit" disabled={signingIn}>{signingIn ? "Please wait…" : authMode === "reset" ? "Send reset link" : authMode === "sign-up" ? "Create account" : "Sign in"}</button>
+                    {authMode === "sign-in" ? <button className="auth-text-button" type="button" disabled={signingIn} onClick={() => { setAuthMode("reset"); setSignInPassword(""); setError(null); setAuthError(""); }}>Forgot password?</button> : null}
+                  </>
+                )}
+              </form>
+            ) : null}
+          </div>
         </header>
 
         <div className="feedback-area" aria-live="polite">
@@ -363,13 +694,13 @@ export default function Workspace() {
             <div className="upload-panel-heading">
               <div>
                 <h2 id="upload-title">Add a transcript</h2>
-                <p>Upload or paste plain text, up to 100 KiB.</p>
+                <p>{inputMode === "audio" ? "Upload audio or record a short clip, then review the transcript." : "Upload or paste plain text, up to 100 KiB."}</p>
               </div>
               <button
                 className="close-button"
                 onClick={() => setShowUpload(false)}
                 aria-label="Close upload panel"
-                disabled={uploading}
+                disabled={busy}
               >
                 ×
               </button>
@@ -390,6 +721,14 @@ export default function Workspace() {
                 onClick={() => setInputMode("paste")}
               >
                 Paste text
+              </button>
+              <button
+                type="button"
+                aria-pressed={inputMode === "audio"}
+                disabled={busy}
+                onClick={() => setInputMode("audio")}
+              >
+                Audio
               </button>
             </div>
             {inputMode === "file" ? (
@@ -414,6 +753,8 @@ export default function Workspace() {
                   }}
                 />
               </>
+            ) : inputMode === "audio" ? (
+              <AudioInput disabled={busy} onTranscribe={transcribe} onRecordingChange={setAudioRecording} />
             ) : (
               <form
                 className="paste-form"
@@ -437,6 +778,7 @@ export default function Workspace() {
                   placeholder="e.g. Product launch planning"
                   onChange={(event) => setPasteTitle(event.target.value)}
                 />
+                <SpeakerEditor speakers={detectedSpeakers} disabled={busy} onRename={renameSpeaker} />
                 <label htmlFor="paste-transcript">Transcript text</label>
                 <textarea
                   id="paste-transcript"
@@ -456,7 +798,7 @@ export default function Workspace() {
                 </button>
               </form>
             )}
-            <details className="format-help">
+            {inputMode !== "audio" ? <details className="format-help">
               <summary>Supported text layouts</summary>
               <pre>
                 {
@@ -473,7 +815,7 @@ export default function Workspace() {
               <a href="/samples/launch-planning.txt" download>
                 Download a synthetic example ↗
               </a>
-            </details>
+            </details> : null}
           </section>
         ) : null}
 
@@ -507,6 +849,7 @@ export default function Workspace() {
                   <div className="sample-heading">
                     <span className="eyebrow">Sample meetings</span>
                   </div>
+                  <div className="sample-row">
                   <button
                     className="sample-card"
                     disabled={loading || busy}
@@ -523,6 +866,9 @@ export default function Workspace() {
                     </span>
                     <span aria-hidden="true">→</span>
                   </button>
+                  <button className="text-button sample-preview" type="button" onClick={() => viewTranscript({ kind: "sample", name: "launch-planning", title: "Atlas launch planning" })} aria-label="Preview Atlas launch planning transcript">View transcript</button>
+                  </div>
+                  <div className="sample-row">
                   <button
                     className="sample-card"
                     disabled={loading || busy}
@@ -537,6 +883,8 @@ export default function Workspace() {
                     </span>
                     <span aria-hidden="true">→</span>
                   </button>
+                  <button className="text-button sample-preview" type="button" onClick={() => viewTranscript({ kind: "sample", name: "incident-review", title: "Checkout incident review" })} aria-label="Preview Checkout incident review transcript">View transcript</button>
+                  </div>
                 </div>
               )}
             </section>
@@ -637,6 +985,7 @@ export default function Workspace() {
           </form>
         </div>
       </main>
+      {transcriptTarget ? <TranscriptViewer title={transcriptTarget.title} {...transcriptContent} onClose={() => setTranscriptTarget(null)} /> : null}
     </div>
   );
 }

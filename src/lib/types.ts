@@ -16,6 +16,7 @@ export type Meeting = {
   chunk_count: number;
   embedding_model: string;
 };
+export type MeetingTranscript = Pick<Meeting, "id" | "title"> & { raw_transcript: string };
 export type Evidence = Chunk & { id: string; similarity: number };
 export type Source = { id: string; meetingTitle: string; turns: Turn[] };
 export type Answer = {

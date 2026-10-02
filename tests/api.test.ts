@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   save: vi.fn(),
   match: vi.fn(),
+  saveChat: vi.fn(),
+  touchSession: vi.fn(),
   embed: vi.fn(),
   generate: vi.fn(),
 }));
@@ -18,6 +20,8 @@ vi.mock("@/lib/server/database", () => ({
   getMeeting: mocks.get,
   saveMeeting: mocks.save,
   matchChunks: mocks.match,
+  saveChat: mocks.saveChat,
+  touchSession: mocks.touchSession,
 }));
 vi.mock("@/lib/server/models", () => ({
   embedTexts: mocks.embed,
@@ -81,6 +85,7 @@ describe("upload-to-answer API flow (external providers mocked)", () => {
     expect(parsed.turns[1].timestamp).toBe("00:18");
     expect(vectors).toHaveLength(chunks.length);
     expect(model).toBe("text-embedding-3-small");
+    expect(mocks.save.mock.calls[0][5]).toMatchObject({ userId: null, sessionId: expect.any(String) });
     expect(
       chunks.flatMap((c: { content: string }) => c.content).join("\n"),
     ).toContain("October 9 is not yet an approved launch date");
@@ -114,6 +119,7 @@ describe("upload-to-answer API flow (external providers mocked)", () => {
       id,
       expect.any(Array),
       "text-embedding-3-small",
+      { userId: null, sessionId: expect.any(String) },
     );
     const answer = await response.json();
     expect(answer.answer).toContain("October 2");
@@ -175,6 +181,15 @@ describe("validation and API errors", () => {
       headers: { host: "127.0.0.1:3000", origin: "http://127.0.0.1:3000" },
     });
     expect((await upload(request)).status).toBe(201);
+  });
+  it("reuses the browser session cookie and scopes the meeting list to it", async () => {
+    const first = await GET(new Request("http://localhost:3000/api/meetings"));
+    const cookie = first.headers.get("set-cookie");
+    expect(cookie).toMatch(/^itl_session=[0-9a-f-]{36}; Path=\/; HttpOnly; SameSite=Lax/);
+    expect(cookie).not.toContain("Max-Age");
+    const sessionId = cookie!.split(";")[0].split("=")[1];
+    await GET(new Request("http://localhost:3000/api/meetings", { headers: { cookie: `itl_session=${sessionId}` } }));
+    expect(mocks.list).toHaveBeenLastCalledWith({ userId: null, sessionId });
   });
   it.each([
     ["bad\u0000data", "meeting.txt", 400],

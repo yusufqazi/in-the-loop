@@ -4,7 +4,8 @@ import { NO_EVIDENCE } from "../citations";
 import { chunkTranscript, parseTranscript } from "../transcript";
 import type { Answer, ChatTurn } from "../types";
 import { modelConfig } from "./config";
-import { getMeeting, matchChunks, saveMeeting } from "./database";
+import { getMeeting, matchChunks, saveMeeting, touchSession } from "./database";
+import type { Owner } from "./owner";
 import { embedTexts, generateAnswer } from "./models";
 import type { Metrics } from "./http";
 
@@ -12,6 +13,7 @@ export async function ingestTranscript(
   raw: string,
   filename: string,
   metrics: Metrics,
+  owner: Owner,
 ) {
   const parsed = parseTranscript(raw, filename.replace(/\.txt$/i, ""));
   const chunks = chunkTranscript(parsed.turns);
@@ -31,9 +33,10 @@ export async function ingestTranscript(
     chunks,
     embeddings,
     modelConfig().embeddingModel,
+    owner,
   );
   metrics.chunkCount = chunks.length;
-  return getMeeting(id);
+  return getMeeting(id, owner);
 }
 
 export async function answerQuestion(
@@ -41,8 +44,10 @@ export async function answerQuestion(
   question: string,
   history: ChatTurn[],
   metrics: Metrics,
+  owner: Owner,
 ): Promise<Answer> {
-  const meeting = await getMeeting(meetingId);
+  await touchSession(owner);
+  const meeting = await getMeeting(meetingId, owner);
   if (meeting.embedding_model !== modelConfig().embeddingModel)
     throw new AppError(
       "MODEL_MISMATCH",
@@ -60,6 +65,7 @@ export async function answerQuestion(
     meetingId,
     embedding,
     meeting.embedding_model,
+    owner,
   );
   metrics.retrievalMs = Math.round(performance.now() - start);
   metrics.retrievedChunks = evidence.length;
