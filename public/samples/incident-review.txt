@@ -1,0 +1,12 @@
+Title: Checkout incident review (synthetic)
+Date: 2026-09-29
+
+[00:00:00] Alex: Checkout failed for some customers between 14:10 and 14:24 yesterday. We are reviewing the recovery and next steps.
+[00:00:25] Noor: My initial theory was that the database ran out of connections.
+[00:00:48] Ben: The logs contradict that theory. Connection usage stayed normal. The payment provider returned timeouts.
+[00:01:12] Noor: I agree with the logs. The cause was the payment provider timeout, not database exhaustion.
+[00:01:35] Alex: We decided to add a circuit breaker around payment requests. Ben owns the implementation, due October 5.
+[00:02:00] Ben: I accept that task and deadline. I also suggest switching payment providers, but that needs a separate evaluation.
+[00:02:25] Alex: Switching providers is a proposal only. We have not made that decision.
+[00:02:50] Noor: I will add a timeout-rate alert. We have not agreed on an alert threshold or a completion date.
+[00:03:15] Alex: The unresolved questions are the alert threshold and whether we should evaluate another provider.

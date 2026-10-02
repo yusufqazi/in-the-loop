@@ -1,0 +1,29 @@
+Meeting Title: Product Launch Planning (synthetic format fixture)
+Date: October 1, 2026
+
+[09:00] Sarah:
+We need to settle whether October 15 is still the launch target.
+
+[09:02] James:
+October 15 might work if QA finishes this week.
+
+[09:04] Michael:
+The security review will not finish until October 20. Remediation could take longer.
+
+[09:06] Sarah:
+Do not commit to October 15. October 20 is not an approved launch date either. We will decide after the security review.
+
+[09:11] James:
+I own the documentation draft and will have it ready by Friday.
+
+[09:14] Sarah:
+Agreed. James owns the documentation draft, due Friday.
+
+[09:16] Michael:
+I will investigate the deployment configuration issue. I cannot commit to fixing it yet.
+
+[09:21] Sarah:
+Ownership of the actual deployment fix remains unresolved until that investigation is complete.
+
+[09:33] Sarah:
+Move the analytics migration deadline from Wednesday to Friday. Pricing remains unchanged for this launch.

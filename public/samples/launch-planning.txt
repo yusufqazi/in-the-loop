@@ -1,0 +1,15 @@
+Title: Atlas launch planning (synthetic)
+Date: 2026-09-28
+
+[00:00] Sarah: The goal today is to settle the launch scope and assign the remaining checks.
+[00:18] Michael: I propose October 9 for the public launch. The dashboard looks ready, but I have not run the full load test yet.
+[00:40] Sarah: October 9 is a proposal, not an approved launch date. We need the load test and accessibility review first.
+[01:05] Priya: The signup flow still has a keyboard navigation issue. I am concerned about releasing it before that is fixed.
+[01:28] Sarah: Agreed. We have decided to include the dashboard in the initial release and defer CSV export to a later release.
+[01:50] Michael: I will run the load test and share the report by October 2.
+[02:12] Sarah: Thanks, Michael. You own the load test report, due October 2. Priya, can you take the keyboard fix?
+[02:34] Priya: Yes, I will fix keyboard navigation in signup. I cannot commit to a deadline until I investigate the focus trap.
+[02:57] Sarah: We have an owner for the keyboard fix, but no agreed deadline. The public launch date remains unresolved.
+[03:20] Jordan: Do we have approval to announce pricing in the launch email?
+[03:40] Sarah: No pricing decision today. I will ask finance for approval; we have not agreed on a deadline for that follow-up.
+[04:00] Michael: To confirm, CSV export is deferred, my report is due October 2, and October 9 is not yet an approved launch date.

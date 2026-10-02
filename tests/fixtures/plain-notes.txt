@@ -1,0 +1,5 @@
+Synthetic meeting notes
+
+The team confirmed that the dashboard will ship in the initial release. CSV export is deferred to a later release. No public launch date was approved.
+
+Noor accepted ownership of the accessibility audit, due October 8. The budget was discussed, but no amount was agreed. These notes do not record speaker labels or timestamps.
