@@ -101,6 +101,10 @@ export default function Workspace() {
   const [uploading, setUploading] = useState(false);
   const [asking, setAsking] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [renameTitle, setRenameTitle] = useState("");
+  const [renameError, setRenameError] = useState("");
   const [transcriptTarget, setTranscriptTarget] = useState<TranscriptTarget | null>(null);
   const [transcriptContent, setTranscriptContent] = useState({ text: "", loading: true, error: "" });
   const [showUpload, setShowUpload] = useState(false);
@@ -129,13 +133,26 @@ export default function Workspace() {
   const fileInput = useRef<HTMLInputElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const busyRef = useRef(false);
+  const editingRef = useRef<string | null>(null);
+  const titleInput = useRef<HTMLTextAreaElement>(null);
   const selected = meetings.find((m) => m.id === selectedId);
   const messages = selectedId ? chats[selectedId] || [] : [];
   const chatsRef = useRef(chats);
-  const busy = uploading || asking || deletingId !== null || audioRecording || transcribing;
+  const busy = uploading || asking || deletingId !== null || renamingId !== null || audioRecording || transcribing;
   useEffect(() => {
     chatsRef.current = chats;
   }, [chats]);
+  useEffect(() => {
+    titleInput.current?.focus();
+    titleInput.current?.select();
+  }, [editingId]);
+  useEffect(() => {
+    const input = titleInput.current;
+    if (input) {
+      input.style.height = "0px";
+      input.style.height = `${input.scrollHeight}px`;
+    }
+  }, [editingId, renameTitle]);
 
   async function loadMeetings(signal?: AbortSignal) {
     try {
@@ -201,6 +218,10 @@ export default function Workspace() {
     let active = true;
     const subscription = supabase.auth.onAuthStateChange((event, session) => {
       if (!active) return;
+      if (event === "SIGNED_IN" || event === "SIGNED_OUT") {
+        editingRef.current = null;
+        setEditingId(null);
+      }
       if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session) {
         setAccountEmail(session.user.email || null);
         setAccountReady(false);
@@ -288,9 +309,9 @@ export default function Workspace() {
     return () => { active = false; };
   }, [accountEmail, accountReady, selectedId]);
   useEffect(() => {
-    if (messages.length || asking)
+    if (!showUpload && (messages.length || asking))
       bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages.length, asking]);
+  }, [messages.length, asking, showUpload]);
 
   useEffect(() => {
     if (!transcriptTarget) return;
@@ -342,6 +363,51 @@ export default function Workspace() {
       setError(problem(e));
     } finally {
       setDeletingId(null);
+      busyRef.current = false;
+    }
+  }
+
+  function startRename(meeting: Meeting) {
+    if (busyRef.current || audioRecording) return;
+    editingRef.current = meeting.id;
+    setRenameTitle(meeting.title);
+    setRenameError("");
+    setEditingId(meeting.id);
+  }
+
+  function cancelRename() {
+    editingRef.current = null;
+    setEditingId(null);
+  }
+
+  async function renameMeetingIndex(meeting: Meeting) {
+    if (editingRef.current !== meeting.id || busyRef.current || audioRecording) return;
+    const title = renameTitle.trim();
+    if (!title || title.length > 120 || /[\u0000-\u001f\u007f]/.test(renameTitle)) {
+      setRenameError("Enter a title of 1–120 characters on one line.");
+      return;
+    }
+    if (title === meeting.title) {
+      cancelRename();
+      return;
+    }
+    busyRef.current = true;
+    setRenamingId(meeting.id);
+    setRenameError("");
+    setError(null);
+    setNotice("");
+    try {
+      const { meeting: updated } = await api<{ meeting: Meeting }>(`/api/meetings/${meeting.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+      setMeetings((current) => current.map((item) => item.id === updated.id ? updated : item));
+      if (editingRef.current === meeting.id) cancelRename();
+    } catch (e) {
+      if (editingRef.current === meeting.id) setRenameError(problem(e).message);
+    } finally {
+      setRenamingId(null);
       busyRef.current = false;
     }
   }
@@ -559,12 +625,55 @@ export default function Workspace() {
           ) : meetings.length ? (
             meetings.map((meeting, index) => (
               <div key={meeting.id} className={`meeting-row ${meeting.id === selectedId ? "selected" : ""}`}>
+              {editingId === meeting.id ? (
+                <div className={`meeting-button ${meeting.id === selectedId ? "selected" : ""}`}>
+                  <span className="meeting-glyph" aria-hidden="true">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <span className="meeting-title-edit-content">
+                    <textarea
+                      ref={titleInput}
+                      className="meeting-title-edit"
+                      aria-label="Meeting title"
+                      aria-describedby={`meeting-title-help${renameError ? " meeting-title-error" : ""}`}
+                      aria-invalid={!!renameError}
+                      rows={1}
+                      maxLength={120}
+                      value={renameTitle}
+                      readOnly={busy}
+                      onChange={(event) => {
+                        setRenameTitle(event.target.value);
+                        setRenameError("");
+                      }}
+                      onBlur={() => void renameMeetingIndex(meeting)}
+                      onKeyDown={(event) => {
+                        if (event.nativeEvent.isComposing || renamingId === meeting.id) return;
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          void renameMeetingIndex(meeting);
+                        } else if (event.key === "Escape") {
+                          event.preventDefault();
+                          cancelRename();
+                        }
+                      }}
+                    />
+                    <span id="meeting-title-help" className="sr-only">Enter or click away to save. Escape to cancel.</span>
+                    {renameError ? <span id="meeting-title-error" className="meeting-title-error" role="alert">{renameError}</span> : null}
+                    <small>
+                      {meeting.meeting_date || "Date not provided"} ·{" "}
+                      {meeting.turn_count}{" "}
+                      {meeting.turn_count === 1 ? "entry" : "entries"}
+                    </small>
+                  </span>
+                </div>
+              ) : (
               <button
                 className={`meeting-button ${meeting.id === selectedId ? "selected" : ""}`}
                 aria-pressed={meeting.id === selectedId}
                 disabled={busy}
                 onClick={() => {
                   setSelectedId(meeting.id);
+                  setShowUpload(false);
                   setDraft("");
                   setError(null);
                   setNotice("");
@@ -582,9 +691,15 @@ export default function Workspace() {
                   </small>
                 </span>
               </button>
+              )}
+              <div className="meeting-actions">
+              <button type="button" className="meeting-rename" disabled={busy} onClick={() => startRename(meeting)} aria-label={`Rename ${meeting.title}`} title="Rename meeting">
+                <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m4 12-1 5 5-1L17 7l-4-4-9 9Zm7-7 4 4M4 12l4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </button>
               <button type="button" className="meeting-delete" disabled={busy} onClick={() => void removeMeeting(meeting)} aria-label={`Delete ${meeting.title}`} title="Delete meeting">
                 <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 5h14M7 5V3h6v2M5 5l1 12h8l1-12M8 8v6m4-6v6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
+              </div>
               </div>
             ))
           ) : (
@@ -610,9 +725,10 @@ export default function Workspace() {
         </div>
       </aside>
 
-      <main className="main-area" id="conversation">
+      <main className={`main-area${showUpload ? " upload-open" : ""}`} id="conversation">
         <header className="workspace-header">
           <div>
+            {!showUpload ? <>
             <h1>{selected ? selected.title : "Your meeting workspace"}</h1>
             {selected ? (
               <p>
@@ -622,9 +738,10 @@ export default function Workspace() {
                 {selected.turn_count === 1 ? "entry" : "entries"}
               </p>
             ) : null}
+            </> : null}
           </div>
           <div className="account-control">
-            {selected ? <button className="account-button" type="button" disabled={busy} onClick={() => viewTranscript({ kind: "meeting", id: selected.id, title: selected.title })}>View transcript</button> : null}
+            {selected && !showUpload ? <button className="account-button" type="button" disabled={busy} onClick={() => viewTranscript({ kind: "meeting", id: selected.id, title: selected.title })}>View transcript</button> : null}
             {accountEmail ? (
               <>
                 <span>{accountEmail}</span>
@@ -819,6 +936,7 @@ export default function Workspace() {
           </section>
         ) : null}
 
+        {!showUpload ? <>
         <div className="conversation-scroll">
           {!messages.length ? (
             <section className="welcome">
@@ -984,6 +1102,7 @@ export default function Workspace() {
             </div>
           </form>
         </div>
+        </> : null}
       </main>
       {transcriptTarget ? <TranscriptViewer title={transcriptTarget.title} {...transcriptContent} onClose={() => setTranscriptTarget(null)} /> : null}
     </div>

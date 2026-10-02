@@ -85,6 +85,16 @@ export async function deleteMeeting(id: string, owner: Owner): Promise<void> {
   if (error) throw databaseError();
   if (!data) throw new AppError("NOT_FOUND", "Meeting not found.", 404);
 }
+export async function renameMeeting(id: string, title: string, owner: Owner): Promise<Meeting> {
+  const query = database().from("meetings").update({ title }).eq("id", id);
+  const scoped = owner.userId
+    ? query.eq("user_id", owner.userId)
+    : query.eq("session_id", owner.sessionId!).gt("expires_at", new Date().toISOString());
+  const { data, error } = await scoped.select(meetingColumns).maybeSingle();
+  if (error) throw databaseError();
+  if (!data) throw new AppError("NOT_FOUND", "Meeting not found.", 404);
+  return data;
+}
 export async function touchSession(owner: Owner) {
   if (!owner.sessionId) return;
   const { error } = await database()

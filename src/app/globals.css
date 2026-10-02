@@ -211,11 +211,7 @@ button svg {
   background: transparent;
   text-align: left;
 }
-.meeting-button:hover:not(:disabled) {
-  background: #e7e8df;
-}
 .meeting-button.selected {
-  background: var(--green-light);
   border-left-color: var(--green);
   color: var(--green);
 }
@@ -229,6 +225,28 @@ button svg {
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
+.meeting-title-edit-content { flex: 1; }
+.meeting-title-edit {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: 1px solid var(--green);
+  outline-offset: 2px;
+  background: var(--paper);
+  color: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  overflow: hidden;
+  resize: none;
+}
+.meeting-title-edit:read-only { opacity: .6; }
+.meeting-title-edit:focus-visible { outline: 1px solid var(--green); outline-offset: 2px; }
+.meeting-title-error { display: block; margin-top: 6px; color: #8b3515; font-size: 11px; line-height: 1.4; }
 .meeting-button small {
   display: block;
   margin-top: 7px;
@@ -247,11 +265,14 @@ button svg {
   color: var(--green);
 }
 .meeting-row { display: flex; border-bottom: 1px solid var(--border); }
+.meeting-row:hover { background: #e7e8df; }
 .meeting-row.selected { background: var(--green-light); }
 .meeting-row .meeting-button { flex: 1; min-width: 0; border-bottom: 0; }
-.meeting-delete { align-self: flex-start; flex-shrink: 0; width: 30px; height: 34px; margin: 10px 2px 0 0; padding: 7px; border: 0; background: transparent; color: var(--muted); }
-.meeting-delete svg { width: 16px; height: 16px; }
-.meeting-delete:hover:not(:disabled) { color: #8b3515; background: #f3e6dc; }
+.meeting-actions { display: flex; flex-direction: column; flex-shrink: 0; margin: 10px 2px 0 0; }
+.meeting-delete, .meeting-rename { width: 30px; height: 30px; padding: 7px; border: 0; background: transparent; color: var(--muted); }
+.meeting-delete svg, .meeting-rename svg { width: 16px; height: 16px; }
+.meeting-delete:hover:not(:disabled) { color: #8b3515; }
+.meeting-rename:hover:not(:disabled) { color: var(--green); }
 .transcript-dialog { width: min(900px, calc(100vw - 32px)); height: min(760px, calc(100dvh - 48px)); max-width: none; max-height: none; margin: auto; padding: 0; border: 1px solid var(--border); border-radius: 2px; background: var(--paper); color: var(--ink); overflow: hidden; }
 .transcript-dialog[open] { display: flex; flex-direction: column; }
 .transcript-dialog::backdrop { background: #181b1759; }
@@ -443,6 +464,12 @@ button svg {
   display: flex;
   justify-content: space-between;
   gap: 16px;
+}
+.upload-open .upload-panel {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  margin-bottom: 22px;
 }
 .upload-panel h2 {
   margin: 0 0 7px;

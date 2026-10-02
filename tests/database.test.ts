@@ -1,16 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { claimSession, deleteMeeting, getMeetingTranscript, matchChunks, saveMeeting } from "@/lib/server/database";
+import { claimSession, deleteMeeting, getMeetingTranscript, matchChunks, renameMeeting, saveMeeting } from "@/lib/server/database";
 import { chunkTranscript, parseTranscript } from "@/lib/transcript";
 const owner = { userId: null, sessionId: "550e8400-e29b-41d4-a716-446655440000" };
 
-const mocks = vi.hoisted(() => ({ rpc: vi.fn(), create: vi.fn(), from: vi.fn(), select: vi.fn(), eq: vi.fn(), gt: vi.fn(), delete: vi.fn(), maybeSingle: vi.fn() }));
+const mocks = vi.hoisted(() => ({ rpc: vi.fn(), create: vi.fn(), from: vi.fn(), select: vi.fn(), eq: vi.fn(), gt: vi.fn(), delete: vi.fn(), update: vi.fn(), maybeSingle: vi.fn() }));
 vi.mock("@supabase/supabase-js", () => ({ createClient: mocks.create }));
 beforeEach(() => {
   vi.stubEnv("SUPABASE_URL", "https://test.supabase.co");
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-only-key");
-  const query = { select: mocks.select, eq: mocks.eq, gt: mocks.gt, delete: mocks.delete, maybeSingle: mocks.maybeSingle };
+  const query = { select: mocks.select, eq: mocks.eq, gt: mocks.gt, delete: mocks.delete, update: mocks.update, maybeSingle: mocks.maybeSingle };
   mocks.create.mockReturnValue({ rpc: mocks.rpc, from: mocks.from });
-  for (const method of [mocks.from, mocks.select, mocks.eq, mocks.gt, mocks.delete]) method.mockReset().mockReturnValue(query);
+  for (const method of [mocks.from, mocks.select, mocks.eq, mocks.gt, mocks.delete, mocks.update]) method.mockReset().mockReturnValue(query);
   mocks.maybeSingle.mockReset();
   mocks.rpc.mockReset();
 });
@@ -51,6 +51,40 @@ describe("private meeting management", () => {
     await expect(deleteMeeting("meeting-id", owner)).rejects.toMatchObject({ code: "DATABASE_ERROR", status: 503 });
     expect(mocks.delete).toHaveBeenCalledOnce();
     expect(mocks.select).toHaveBeenCalledWith("id");
+  });
+
+  it("renames only the title through a meeting/session/unexpired query without rewriting transcript, chunks or chats", async () => {
+    const meeting = { id: "meeting-id", title: "Updated title", meeting_date: null, created_at: "2026-10-01T00:00:00Z", turn_count: 2, chunk_count: 1, embedding_model: "model" };
+    mocks.maybeSingle.mockResolvedValue({ data: meeting, error: null });
+    expect(await renameMeeting("meeting-id", "Updated title", owner)).toEqual(meeting);
+    expect(mocks.from).toHaveBeenCalledExactlyOnceWith("meetings");
+    expect(mocks.update).toHaveBeenCalledExactlyOnceWith({ title: "Updated title" });
+    expect(mocks.eq).toHaveBeenCalledWith("id", "meeting-id");
+    expect(mocks.eq).toHaveBeenCalledWith("session_id", owner.sessionId);
+    expect(mocks.gt).toHaveBeenCalledWith("expires_at", expect.any(String));
+    expect(mocks.select).toHaveBeenCalledWith("id,title,meeting_date,created_at,turn_count,chunk_count,embedding_model");
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.delete).not.toHaveBeenCalled();
+  });
+
+  it("scopes saved-meeting renames to the verified user without anonymous lifetime filters", async () => {
+    mocks.maybeSingle.mockResolvedValue({ data: { id: "meeting-id", title: "New title" }, error: null });
+    await renameMeeting("meeting-id", "New title", { userId: "user-1", sessionId: null });
+    expect(mocks.eq).toHaveBeenCalledWith("id", "meeting-id");
+    expect(mocks.eq).toHaveBeenCalledWith("user_id", "user-1");
+    expect(mocks.eq).not.toHaveBeenCalledWith("session_id", expect.anything());
+    expect(mocks.gt).not.toHaveBeenCalled();
+  });
+
+  it("does not distinguish missing, expired, and other-owner meetings when renaming", async () => {
+    mocks.maybeSingle.mockResolvedValue({ data: null, error: null });
+    await expect(renameMeeting("other-meeting", "New title", owner)).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+  });
+
+  it("surfaces rename database failures without exposing private SQL details", async () => {
+    mocks.maybeSingle.mockResolvedValue({ data: null, error: { message: "private SQL detail" } });
+    await expect(renameMeeting("meeting-id", "New title", owner)).rejects.toMatchObject({ code: "DATABASE_ERROR", status: 503 });
+    await expect(renameMeeting("meeting-id", "New title", owner)).rejects.not.toThrow("private SQL detail");
   });
 });
 describe("database request contracts", () => {
