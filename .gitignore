@@ -3,7 +3,10 @@ node_modules/
 out/
 dist/
 coverage/
-screenshots/
+screenshots/*
+!screenshots/meeting-qa.png
+!screenshots/transcript-creation.png
+!screenshots/audio-speakers.png
 test-results/
 playwright-report/
 .vercel/
