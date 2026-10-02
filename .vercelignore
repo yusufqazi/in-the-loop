@@ -1,0 +1,22 @@
+.git/
+node_modules/
+.next/
+out/
+dist/
+coverage/
+screenshots/
+test-results/
+playwright-report/
+.vercel/
+.env*
+*.log
+*.tsbuildinfo
+*.pem
+*.key
+credentials*.json
+service-account*.json
+DEVELOPMENT_NOTES.md
+Assignment - AI FDE*
+private-transcripts/
+.DS_Store
+Thumbs.db
