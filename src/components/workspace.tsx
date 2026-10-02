@@ -47,11 +47,11 @@ function problem(error: unknown): Problem {
 function LoopMark({ small = false }: { small?: boolean }) {
   return (
     <span className={`loop-mark ${small ? "small" : ""}`} aria-hidden="true">
-      <svg viewBox="0 0 32 32" fill="none">
+      <svg viewBox="0 0 48 24" fill="none">
         <path
-          d="M20.5 8H13a8 8 0 1 0 8 8v-4M11.5 24H19a8 8 0 1 0-8-8v4"
+          d="M24 12C20 7 17 4 12 4C6 4 3 8 3 12s3 8 9 8c5 0 8-3 12-8s7-8 12-8c6 0 9 4 9 8s-3 8-9 8c-5 0-8-3-12-8Z"
           stroke="currentColor"
-          strokeWidth="2.3"
+          strokeWidth="3.8"
           strokeLinecap="round"
         />
       </svg>
@@ -159,7 +159,7 @@ export default function Workspace() {
       setShowUpload(false);
       setPastedText("");
       setPasteTitle("");
-      setNotice(`“${meeting.title}” is ready to explore.`);
+      setNotice(`“${meeting.title}” added.`);
     } catch (e) {
       setError(problem(e));
     } finally {
@@ -248,10 +248,7 @@ export default function Workspace() {
         <div className="brand">
           <LoopMark />
           <div>
-            <strong>
-              In The Loop<span className="brand-dot">.</span>
-            </strong>
-            <span>Meeting intelligence</span>
+            <strong>In The Loop</strong>
           </div>
         </div>
         <button
@@ -260,14 +257,13 @@ export default function Workspace() {
           disabled={busy}
           aria-expanded={showUpload}
         >
-          <UploadIcon />
           Upload transcript
           <span className="button-plus" aria-hidden="true">
             +
           </span>
         </button>
         <div className="meeting-list-heading">
-          <h2>Your meetings</h2>
+          <h2>Meeting index</h2>
           <span>{meetings.length}</span>
         </div>
         <nav className="meeting-list" aria-label="Select a meeting">
@@ -276,7 +272,7 @@ export default function Workspace() {
               Loading meetings…
             </p>
           ) : meetings.length ? (
-            meetings.map((meeting) => (
+            meetings.map((meeting, index) => (
               <button
                 key={meeting.id}
                 className={`meeting-button ${meeting.id === selectedId ? "selected" : ""}`}
@@ -290,7 +286,7 @@ export default function Workspace() {
                 }}
               >
                 <span className="meeting-glyph" aria-hidden="true">
-                  ≡
+                  {String(index + 1).padStart(2, "0")}
                 </span>
                 <span>
                   <strong>{meeting.title}</strong>
@@ -311,15 +307,6 @@ export default function Workspace() {
           )}
         </nav>
         <div className="sidebar-bottom">
-          <span className="demo-pill">
-            <i aria-hidden="true" />
-            Restricted demo
-          </span>
-          <p>
-            Use synthetic transcripts only.
-            <br />
-            Meetings persist; chat resets on refresh.
-          </p>
           <button
             className="text-button"
             onClick={() => {
@@ -337,7 +324,6 @@ export default function Workspace() {
       <main className="main-area" id="conversation">
         <header className="workspace-header">
           <div>
-            <span className="eyebrow">MEETING WORKSPACE</span>
             <h1>{selected ? selected.title : "Your meeting workspace"}</h1>
             {selected ? (
               <p>
@@ -345,15 +331,9 @@ export default function Workspace() {
                 <span>•</span>
                 {selected.turn_count} transcript{" "}
                 {selected.turn_count === 1 ? "entry" : "entries"}
-                <span>•</span>Ready to explore
               </p>
-            ) : (
-              <p>A clearer picture of every conversation.</p>
-            )}
+            ) : null}
           </div>
-          <span className="header-badge">
-            <span aria-hidden="true">◇</span> Evidence-backed answers
-          </span>
         </header>
 
         <div className="feedback-area" aria-live="polite">
@@ -382,11 +362,8 @@ export default function Workspace() {
           <section className="upload-panel" aria-labelledby="upload-title">
             <div className="upload-panel-heading">
               <div>
-                <h2 id="upload-title">Bring a conversation into the loop</h2>
-                <p>
-                  Upload or paste plain text, up to 100 KiB. Use synthetic data
-                  for this demo.
-                </p>
+                <h2 id="upload-title">Add a transcript</h2>
+                <p>Upload or paste plain text, up to 100 KiB.</p>
               </div>
               <button
                 className="close-button"
@@ -423,7 +400,6 @@ export default function Workspace() {
                     {uploading
                       ? "Parsing and indexing your meeting…"
                       : "Choose a transcript"}
-                    <small>Speaker names and timestamps are preserved.</small>
                   </span>
                 </label>
                 <input
@@ -504,20 +480,14 @@ export default function Workspace() {
         <div className="conversation-scroll">
           {!messages.length ? (
             <section className="welcome">
-              <div className="welcome-emblem">
-                <LoopMark />
-              </div>
-              <span className="eyebrow">LESS SEARCHING. MORE CLARITY.</span>
               <h2>
                 {selected
-                  ? "What would you like to know?"
-                  : "Keep the conversation.\nFind what matters."}
+                  ? "What would you\nlike to know?"
+                  : "Add your first meeting."}
               </h2>
-              <p>
-                {selected
-                  ? "Explore decisions, action items, and open questions. Every answer connects back to the conversation."
-                  : "Turn meeting transcripts into answers you can trace. Upload a meeting, ask a question, and follow the evidence."}
-              </p>
+              {!selected ? (
+                <p>Upload a transcript or choose a sample to get started.</p>
+              ) : null}
               {selected ? (
                 <div className="question-grid">
                   {questions.map((question, i) => (
@@ -535,10 +505,7 @@ export default function Workspace() {
               ) : (
                 <div className="sample-section">
                   <div className="sample-heading">
-                    <span className="eyebrow">
-                      START WITH A SYNTHETIC MEETING
-                    </span>
-                    <span>No private data needed</span>
+                    <span className="eyebrow">Sample meetings</span>
                   </div>
                   <button
                     className="sample-card"
@@ -570,10 +537,6 @@ export default function Workspace() {
                     </span>
                     <span aria-hidden="true">→</span>
                   </button>
-                  <p className="sample-note">
-                    Samples use the same upload and indexing pipeline as your
-                    files.
-                  </p>
                 </div>
               )}
             </section>
@@ -601,7 +564,14 @@ export default function Workspace() {
                         </span>
                       ) : null}
                     </div>
-                    <p className="message-text">{message.text}</p>
+                    <p className="message-text">
+                      {message.role === "assistant"
+                        ? message.text.replace(
+                            /[ \t]*\[E\d+(?:[ \t]*,[ \t]*E\d+)*\]/g,
+                            "",
+                          )
+                        : message.text}
+                    </p>
                     {message.answer ? (
                       <Sources sources={message.answer.sources} />
                     ) : null}
@@ -613,9 +583,7 @@ export default function Workspace() {
           {asking || uploading ? (
             <div className="working-status" role="status">
               <span className="spinner" aria-hidden="true" />
-              {uploading
-                ? "Preserving speaker turns and creating searchable passages…"
-                : "Finding relevant passages and checking the evidence…"}
+              {uploading ? "Adding transcript…" : "Finding an answer…"}
             </div>
           ) : null}
           <div ref={bottom} />
@@ -650,11 +618,6 @@ export default function Workspace() {
               }}
             />
             <div className="composer-footer">
-              <span>
-                {selected
-                  ? "Answers stay grounded in this meeting"
-                  : "Your meeting is the source of truth"}
-              </span>
               <button
                 type="submit"
                 disabled={!selected || busy || !draft.trim()}
@@ -672,10 +635,6 @@ export default function Workspace() {
               </button>
             </div>
           </form>
-          <p className="composer-note">
-            AI can make mistakes. Check supporting passages for important
-            details.
-          </p>
         </div>
       </main>
     </div>

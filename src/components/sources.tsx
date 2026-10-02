@@ -3,12 +3,11 @@ import type { Source } from "@/lib/types";
 export default function Sources({ sources }: { sources: Source[] }) {
   if (!sources.length) return null;
   return (
-    <div className="sources">
-      <p className="eyebrow">Supporting passages · {sources.length}</p>
+    <details className="sources">
+      <summary>Sources ({sources.length})</summary>
       {sources.map((source) => (
         <details className="source" key={source.id}>
           <summary>
-            <span className="source-tag">{source.id}</span>
             <span className="source-heading">
               <strong>{source.meetingTitle}</strong>
               <small>
@@ -30,10 +29,6 @@ export default function Sources({ sources }: { sources: Source[] }) {
             </span>
           </summary>
           <div className="source-turns">
-            <p className="source-note">
-              Available timestamps mark entry starts. Missing metadata is not
-              inferred.
-            </p>
             {source.turns.map((turn) => (
               <div className="source-turn" key={turn.id}>
                 <div>
@@ -50,6 +45,6 @@ export default function Sources({ sources }: { sources: Source[] }) {
           </div>
         </details>
       ))}
-    </div>
+    </details>
   );
 }
