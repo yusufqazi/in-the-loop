@@ -64,7 +64,6 @@ button svg {
   color: var(--ink);
 }
 
-/* The conversation and composer use the available workspace width. */
 .workspace {
   display: grid;
   grid-template-columns: 246px minmax(0, 1fr);
@@ -450,7 +449,6 @@ button svg {
   color: var(--green);
 }
 
-/* Existing upload and paste forms share the same flat, compact visual system. */
 .upload-panel {
   flex-shrink: 0;
   max-height: 48vh;
@@ -528,13 +526,6 @@ button svg {
   width: 24px;
   height: 24px;
   color: var(--green);
-}
-.file-label small {
-  display: block;
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 400;
 }
 #transcript-file {
   max-width: 100%;
@@ -909,7 +900,6 @@ button svg {
   letter-spacing: 0;
 }
 
-/* Sources stay available behind a single compact disclosure. */
 .sources {
   margin-top: 26px;
 }

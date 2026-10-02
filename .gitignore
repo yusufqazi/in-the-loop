@@ -3,6 +3,7 @@ node_modules/
 out/
 dist/
 coverage/
+screenshots/
 test-results/
 playwright-report/
 .vercel/
